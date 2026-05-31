@@ -351,6 +351,146 @@ UserB (浏览器) ──────┤──── Chat Server (:3100)
 
 ---
 
+## 前端交互设计
+
+### 页面结构
+
+```
+┌─────────────────────────────────────┐
+│         登录页                       │
+│                                     │
+│  用户名： [________________]        │
+│                                     │
+│        [  进入聊天  ]               │
+└─────────────────────────────────────┘
+          │ 登录成功
+          ▼
+┌─────────────────────────────────────┐
+│  Agent 列表         ← 显示所有可用   │
+│                       Agent         │
+│  ┌───────────────────────────────┐  │
+│  │ 哪吒 (nezha)                 │  │
+│  │ 上次对话: 2分钟前             │  │
+│  ├───────────────────────────────┤  │
+│  │ Cloud (cloud)                │  │
+│  │ 上次对话: 昨天                │  │
+│  ├───────────────────────────────┤  │
+│  │ R2D2 (r2d2)                  │  │
+│  │ 上次对话: 新                  │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+          │ 点击 Agent
+          ▼
+┌─────────────────────────────────────┐
+│  Chat  ← Agent: 哪吒              │
+│                                     │
+│  用户: 你好              10:30     │
+│  ─────────────────────────────      │
+│  Agent: 我是哪吒           10:30   │
+│  有什么可以帮你？                   │
+│                                     │
+│  ┌──────────────────────────────┐   │
+│  │ 输入消息...       [发送]     │   │
+│  └──────────────────────────────┘   │
+└─────────────────────────────────────┘
+```
+
+### 三屏设计
+
+**第一屏——登录**
+- 输入 userId + userName（自由填写，无密码）
+- 点击进入后建立 WebSocket 连接
+- 发送 `{ type: "register", userId, userName }`
+- Server 返回 `agent_list` 后自动跳转到 Agent 选择页
+
+**第二屏——Agent 选择**
+- 仅展示当前可用的 Agent（从 agent_list 获取）
+- 每个 Agent 卡片显示：头像（首字母/emoji）、名称、上次对话时间
+- 点击 Agent → 进入聊天页
+- 底部展示当前登录用户身份，可退出重新登录
+
+**第三屏——聊天**
+- 顶部：Agent 名称 + 返回按钮（回到 Agent 选择页）
+- 中间：消息列表（按时间倒序，从旧到新）
+- 底部：输入框 + 发送按钮
+- 消息气泡：用户消息右对齐（蓝色），Agent 回复左对齐（灰色）
+
+### 消息与历史管理
+
+**前端状态划分：**
+
+```
+全局状态（Chat Server 级别）：
+  - ws: WebSocket 连接
+  - userId, userName: 当前用户身份
+  - agents: Agent 列表
+
+会话状态（按 (userId, agentId) 划分）：
+  - activeAgentId: 当前选中的 Agent
+  - messages[agentId]: 每个 Agent 的独立消息列表
+    - messages["nezha"] = [{ role, content, time }, ...]
+    - messages["cloud"]  = [{ role, content, time }, ...]
+    - messages["r2d2"]   = [{ role, content, time }, ...]
+```
+
+**历史记录加载：**
+- 连接建立后，Chat Server 初次返回可携带该 userId 的最近消息历史
+- 前端按 agentId 分流存储到 messages[agentId] 中
+- 切换 Agent 时读取对应的 messages[agentId]，不需要重新请求
+- 新消息实时追加到对应 Agent 的消息列表
+
+**消息渲染逻辑：**
+- 收到 `{ type: "message", from: "agent:nezha", content, agentId }` → 追加到 `messages["nezha"]`
+- 如果当前 `activeAgentId === "nezha"`，把消息显示到聊天区
+- 否则不显示，但在 Agent 卡片上标红点/未读提示
+
+### 多 Agent 隔离示例
+
+```
+用户 "u_alice" 登录 →
+  ws.register({ userId: "u_alice", userName: "Alice" })
+  → Server 返回 agent_list: [nezha, cloud, r2d2]
+
+Alice 点 "nezha" →
+  发送消息 "你好"
+  → messages["nezha"] = [{ role:"user", content:"你好" }]
+  → 收到 "我是哪吒"
+  → messages["nezha"].push({ role:"agent", content:"我是哪吒" })
+  → 聊天区显示对话
+
+Alice 切到 "cloud" →
+  → 聊天区切换到 messages["cloud"]（独立的历史）
+  → 发送新消息 "帮我查天气"
+  → messages["cloud"].push({ role:"user", content:"帮我查天气" })
+
+切换回 "nezha" →
+  → 聊天区显示 messages["nezha"]：之前的对话完整保留
+  → 继续发消息对话
+```
+
+### 后端消息存储
+
+Chat Server 需要按 `(userId, agentId)` 存储最近 N 条消息，以便用户刷新页面后能恢复历史：
+
+```
+messageHistory = Map<string, Message[]>
+// key = `${userId}:${agentId}`
+// value = [{ role, content, timestamp, messageId }, ...]
+```
+
+```text
+Browser register
+  → Server 查 messageHistory，按 agentId 分组返回
+  → 格式: { type: "history", messages: { "nezha": [...], "cloud": [...] } }
+```
+
+**隔离规则：**
+- userId 不同 → 互相看不到任何数据
+- userId 相同、agentId 不同 → 看到各自的独立历史
+- 无密码/无认证，信任 userId 的自声明（未来可加 token/auth）
+
+---
+
 ## 开发路线
 
 ### Phase 1：Chat Server（基础版）
