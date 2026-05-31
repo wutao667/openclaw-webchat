@@ -4,8 +4,8 @@ import { listWebChatAccountIds, resolveWebChatAccount, resolveDefaultWebChatAcco
 import { getWebChatRuntime } from "./runtime.js";
 
 export const webchatPlugin = {
+  id: CHANNEL_ID,
   meta: {
-    id: CHANNEL_ID,
     label: "WebChat",
     selectionLabel: "WebChat",
     blurb: "Browser chat channel for OpenClaw",
