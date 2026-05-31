@@ -1,4 +1,4 @@
-# openclaw-wechat-plugin
+# openclaw-webchat-plugin
 
 Browser WebChat channel for OpenClaw. Chat with your OpenClaw agents directly from a web browser — no third-party IM platform needed.
 
@@ -10,7 +10,7 @@ Browser WebChat channel for OpenClaw. Chat with your OpenClaw agents directly fr
 ## Install
 
 ```bash
-openclaw plugins install openclaw-wechat-plugin
+openclaw plugins install openclaw-webchat-plugin
 ```
 
 ## Quick Start

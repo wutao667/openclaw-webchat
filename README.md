@@ -64,7 +64,7 @@ Chat Server 启动后：
 
 ```bash
 # 方式一：通过 npm 源安装（推荐）
-openclaw plugins install openclaw-wechat-plugin
+openclaw plugins install openclaw-webchat-plugin
 
 # 方式二：本地安装（link 模式，开发用）
 openclaw plugins install path:/path/to/webchat3.0/plugin
