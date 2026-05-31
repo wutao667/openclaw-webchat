@@ -17,16 +17,13 @@ openclaw plugins install openclaw-wechat-plugin
 
 ### 1. Deploy the Chat Server
 
-On any machine with a public IP (or reachable from both browser and plugin):
+On any machine with a public IP (or reachable from both browser and plugin), clone the [repo](https://github.com/wutao667/openclaw-wechat) and run:
 
 ```bash
-npx openclaw-wechat-server
-```
-
-Or clone the [repo](https://github.com/wutao667/openclaw-wechat) and run:
-
-```bash
-cd server && npm install && node server.js
+git clone https://github.com/wutao667/openclaw-wechat.git
+cd openclaw-wechat/server
+npm install
+node server.js
 ```
 
 The Chat Server listens on port `3100`:
