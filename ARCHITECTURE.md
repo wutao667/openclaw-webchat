@@ -211,7 +211,7 @@ Plugin 连接地址：`ws://CHAT_SERVER_HOST:3100/plugin`
 | **Chat Server** | browsers{}, plugins{}, agentIndex{} | 全局路由中心，维护所有 WS 连接，按 agentId 路由到对应 Plugin |
 | **Plugin Instance** | pluginId, ws, agents[] | 每个 OpenClaw 部署一个 Plugin，主动长连 Chat Server |
 | **Agent** | agentId, name, pluginId | 注册在 Plugin 下的 AI 对话代理，全局唯一 agentId |
-| **OpenClaw Session** | sessionKey("webchat:{userId}"), history | Core 管理，按用户隔离会话，跨消息持久化 |
+| **OpenClaw Session** | sessionKey("webchat:{userId}:{agentId}"), history | Core 管理，按 (用户, agent) 二元组隔离会话，跨消息持久化 |
 | **Message** | type, userId, agentId, content, messageId | 消息载体，在三条路径间流转 |
 
 ### 关系图
@@ -267,7 +267,7 @@ Plugin 连接地址：`ws://CHAT_SERVER_HOST:3100/plugin`
 │           │                                                │
 │  ┌────────▼──────────────────────────┐                    │
 │  │  OpenClaw Core Session            │                    │
-│  │  sessionKey = "webchat:{userId}"  │                    │
+│  │  sessionKey = "webchat:{userId}:{agentId}"  │             │
 │  │  (每个 user 独立会话，跨重启持久化)  │                    │
 │  └───────────────────────────────────┘                    │
 └──────────────────────────────────────────────────────────┘
@@ -303,8 +303,9 @@ Plugin 连接地址：`ws://CHAT_SERVER_HOST:3100/plugin`
 **User ↔ Agent（N:M via Session）**
 - 用户选不同 Agent 对话，同 Agent 服务不同用户
 - 发消息时指定 `agentId`
-- Core 按 `sessionKey = "webchat:{userId}"` 管理会话
-- 每个 (userId, agentId) 组合有独立对话历史
+- Core 按 `sessionKey = "webchat:{userId}:{agentId}"` 管理会话
+- 每个 `(userId, agentId)` 组合有独立对话历史
+- sessionKey 格式：`"webchat:{userId}:{agentId}"`
 
 **Session 生命周期**
 ```
@@ -312,6 +313,7 @@ Browser 第一次发消息
   → Chat Server 路由到 Plugin
   → Plugin dispatchIncoming()
   → finalizeInboundContext(userId, agentId)
+  → route.sessionKey = "webchat:{userId}:{agentId}"  ← 按用户+agent隔离
   → recordInboundSession()           ← 创建/恢复 Core Session
   → dispatchReplyWithBufferedBlockDispatcher()
   → Agent 处理 → 回复

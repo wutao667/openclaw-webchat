@@ -1113,6 +1113,9 @@ function buildInboundContext({ message, account, cfg }) {
     agentId
   });
 
+  // Override sessionKey to isolate by (user, agent)
+  route.sessionKey = `${CHANNEL_ID}:${userId}:${agentId}`;
+
   const storePath = core.channel.session.resolveStorePath(cfg.session?.store, {
     agentId: route.agentId
   });
