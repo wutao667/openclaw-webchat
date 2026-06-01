@@ -51,27 +51,26 @@ Use one small JSON protocol across both WebSocket paths.
 
 ### Plugin -> Chat Server
 
+注册消息（V2：appId + secret 鉴权，替代 pluginId）：
+
 ```json
 {
   "type": "register",
-  "pluginId": "webchat-openclaw-plugin",
-  "agents": [
-    {
-      "agentId": "nezha",
-      "name": "哪吒"
-    }
-  ]
+  "appId": "wch_abc123",
+  "secret": "***"
 }
 ```
+
+转发回复（V2：新增 appId 字段）：
 
 ```json
 {
   "type": "outgoing",
-  "pluginId": "webchat-openclaw-plugin",
-  "agentId": "nezha",
+  "appId": "wch_abc123",
+  "agentId": "main",
   "userId": "u_123",
   "conversationId": "u_123",
-  "content": "你好，我是哪吒。",
+  "content": "你好，我是研发小虾。",
   "messageId": "msg_abc"
 }
 ```
@@ -79,33 +78,35 @@ Use one small JSON protocol across both WebSocket paths.
 ### Chat Server -> Plugin
 
 ```json
-{
-  "type": "registered",
-  "ok": true
-}
+// 注册成功
+{ "type": "registered", "ok": true, "appId": "wch_abc123" }
+
+// 注册失败（appId 不存在或 secret 不匹配）
+{ "type": "register_error", "error": "invalid_app" | "invalid_secret" }
 ```
+
+用户消息：
 
 ```json
 {
   "type": "incoming",
   "userId": "u_123",
-  "userName": "吴涛",
-  "agentId": "nezha",
+  "appId": "wch_abc123",
+  "agentId": "main",
   "conversationId": "u_123",
   "content": "你好",
   "messageId": "browser_1710000000000"
 }
 ```
 
+App 列表（直接展示 appId + name，一个 appId = 一个 Agent）：
+
 ```json
 {
-  "type": "agent_list",
-  "agents": [
-    {
-      "agentId": "nezha",
-      "name": "哪吒",
-      "pluginId": "webchat-openclaw-plugin"
-    }
+  "type": "app_list",
+  "apps": [
+    { "appId": "wch_abc123", "name": "研发小虾" },
+    { "appId": "wch_def456", "name": "悟空" }
   ]
 }
 ```
@@ -113,17 +114,13 @@ Use one small JSON protocol across both WebSocket paths.
 ### Browser -> Chat Server
 
 ```json
-{
-  "type": "register",
-  "userId": "u_123",
-  "userName": "吴涛"
-}
-```
+// 注册
+{ "type": "register", "userId": "吴涛" }
 
-```json
+// 发消息（V2：仅需 appId，不携带 agentId。Server 按 appId 路由到 Plugin，Plugin 通过 bindings 映射到对应 agent）
 {
   "type": "message",
-  "agentId": "nezha",
+  "appId": "wch_abc123",
   "content": "你好"
 }
 ```
@@ -131,30 +128,25 @@ Use one small JSON protocol across both WebSocket paths.
 ### Chat Server -> Browser
 
 ```json
-{
-  "type": "registered",
-  "userId": "u_123"
-}
-```
+// 注册确认
+{ "type": "registered", "userId": "u_123" }
 
-```json
+// app 列表（V2：每个 app = 一个 Agent，appId 全局唯一）
 {
-  "type": "agent_list",
-  "agents": [
-    {
-      "agentId": "nezha",
-      "name": "哪吒"
-    }
+  "type": "app_list",
+  "apps": [
+    { "appId": "wch_abc123", "name": "研发小虾" },
+    { "appId": "wch_def456", "name": "悟空" }
   ]
 }
-```
 
-```json
+// 回复消息（V2：携带 appId）
 {
   "type": "message",
-  "from": "agent:nezha",
-  "agentId": "nezha",
-  "content": "你好，我是哪吒。"
+  "from": "agent:main",
+  "appId": "wch_abc123",
+  "agentId": "main",
+  "content": "你好，我是研发小虾。"
 }
 ```
 
@@ -196,16 +188,17 @@ const browsers = new Map();
 // userId -> Set<WebSocket>
 
 const browserMeta = new WeakMap();
-// ws -> { userId, userName, lastSeen }
+// ws -> { userId, lastSeen }
 
 const plugins = new Map();
-// pluginId -> { ws, pluginId, agents, lastSeen }
+// appId -> { ws, appId, agents, lastSeen }
 
 const pluginMeta = new WeakMap();
-// ws -> { pluginId, lastSeen }
+// ws -> { appId, lastSeen }
 
-const agentIndex = new Map();
-// agentId -> pluginId
+const appRegistry = new Map();
+// appId -> { secret, name } — Server 侧预先注册的应用凭证
+// 从 apps.json 配置文件加载
 
 function sendJson(ws, payload) {
   if (ws.readyState !== ws.OPEN) return false;
@@ -226,15 +219,15 @@ function parseJson(raw) {
   }
 }
 
-function listAgents() {
+function listApps() {
   const agents = [];
 
-  for (const [pluginId, entry] of plugins.entries()) {
+  for (const [appId, entry] of plugins.entries()) {
     for (const agent of entry.agents || []) {
       agents.push({
-        pluginId,
+        appId,
         agentId: agent.agentId,
-        name: agent.name || agent.agentId
+        name: app.name || agent.agentId
       });
     }
   }
@@ -243,27 +236,26 @@ function listAgents() {
 }
 
 function broadcastAgentList() {
-  const agents = listAgents();
+  const apps = listApps();
 
   for (const browserSet of browsers.values()) {
     for (const ws of browserSet) {
-      sendJson(ws, { type: "agent_list", agents });
+      sendJson(ws, { type: "app_list", apps });
     }
   }
 
   for (const entry of plugins.values()) {
-    sendJson(entry.ws, { type: "agent_list", agents });
+    sendJson(entry.ws, { type: "app_list", agents });
   }
 }
 
-function addBrowser(ws, userId, userName) {
+function addBrowser(ws, userId) {
   const existing = browsers.get(userId) || new Set();
   existing.add(ws);
   browsers.set(userId, existing);
 
   browserMeta.set(ws, {
     userId,
-    userName,
     lastSeen: Date.now()
   });
 }
@@ -282,7 +274,7 @@ function removeBrowser(ws) {
   }
 }
 
-function addPlugin(ws, pluginId, agents) {
+function registerApp(ws, appId, name) {
   const normalizedAgents = Array.isArray(agents)
     ? agents.map((agent) => {
         if (typeof agent === "string") {
@@ -291,7 +283,7 @@ function addPlugin(ws, pluginId, agents) {
 
         return {
           agentId: String(agent.agentId),
-          name: agent.name || String(agent.agentId)
+          name: app.name || String(agent.agentId)
         };
       })
     : [];
@@ -309,7 +301,7 @@ function addPlugin(ws, pluginId, agents) {
   });
 
   for (const agent of normalizedAgents) {
-    agentIndex.set(agent.agentId, pluginId);
+    appIndex.set(agent.agentId, pluginId);
   }
 }
 
@@ -322,8 +314,8 @@ function removePlugin(ws) {
 
   if (entry?.agents) {
     for (const agent of entry.agents) {
-      if (agentIndex.get(agent.agentId) === meta.pluginId) {
-        agentIndex.delete(agent.agentId);
+      if (appIndex.get(agent.agentId) === meta.pluginId) {
+        appIndex.delete(agent.agentId);
       }
     }
   }
@@ -342,7 +334,7 @@ function routeBrowserMessage(ws, message) {
     return;
   }
 
-  const agents = listAgents();
+  const apps = listApps();
   const agentId = message.agentId || agents[0]?.agentId;
 
   if (!agentId) {
@@ -353,7 +345,7 @@ function routeBrowserMessage(ws, message) {
     return;
   }
 
-  const pluginId = agentIndex.get(agentId);
+  const pluginId = appIndex.get(agentId);
   const plugin = pluginId ? plugins.get(pluginId) : null;
 
   if (!plugin || plugin.ws.readyState !== plugin.ws.OPEN) {
@@ -368,7 +360,6 @@ function routeBrowserMessage(ws, message) {
   sendJson(plugin.ws, {
     type: "incoming",
     userId: meta.userId,
-    userName: meta.userName,
     agentId,
     conversationId: meta.userId,
     content: String(message.content || ""),
@@ -403,8 +394,8 @@ function routePluginOutgoing(ws, message) {
   for (const browser of browserSet) {
     sendJson(browser, {
       type: "message",
-      from: `agent:${message.agentId || "default"}`,
-      agentId: message.agentId,
+      from: "agent",
+      appId: message.appId,
       content: String(message.content || ""),
       messageId: message.messageId || `plugin_${Date.now()}`
     });
@@ -457,9 +448,8 @@ browserWss.on("connection", (ws) => {
 
     if (message.type === "register") {
       const userId = String(message.userId || `u_${Date.now()}`);
-      const userName = String(message.userName || userId);
 
-      addBrowser(ws, userId, userName);
+      addBrowser(ws, userId);
 
       sendJson(ws, {
         type: "registered",
@@ -467,8 +457,8 @@ browserWss.on("connection", (ws) => {
       });
 
       sendJson(ws, {
-        type: "agent_list",
-        agents: listAgents()
+        type: "app_list",
+        agents: listApps()
       });
 
       return;
@@ -513,22 +503,34 @@ pluginWss.on("connection", (ws) => {
     }
 
     if (message.type === "register") {
-      const pluginId = String(message.pluginId || "");
-      if (!pluginId) {
-        sendJson(ws, {
-          type: "error",
-          error: "missing_plugin_id"
-        });
+      const appId = String(message.appId || "");
+      const secret = String(message.secret || "");
+
+      if (!appId) {
+        sendJson(ws, { type: "error", error: "missing_app_id" });
         return;
       }
 
-      addPlugin(ws, pluginId, message.agents);
+      // 从 appRegistry 验证 appId + secret
+      const appEntry = appRegistry.get(appId);
+      if (!appEntry) {
+        sendJson(ws, { type: "register_error", error: "invalid_app" });
+        return;
+      }
+      if (appEntry.secret !== secret) {
+        sendJson(ws, { type: "register_error", error: "invalid_secret" });
+        return;
+      }
 
-      sendJson(ws, {
-        type: "registered",
-        ok: true
-      });
+      // 如果已有相同 appId 的连接，关闭旧的
+      const existing = plugins.get(appId);
+      if (existing?.ws && existing.ws !== ws) {
+        try { existing.ws.close(); } catch {}
+      }
 
+      registerApp(ws, appId, existingApp.name);
+
+      sendJson(ws, { type: "registered", ok: true, appId });
       broadcastAgentList();
       return;
     }
@@ -597,7 +599,7 @@ Key details:
 
 - `browsers`: tracks all browser sockets by `userId`
 - `plugins`: tracks active OpenClaw plugin sockets by `pluginId`
-- `agentIndex`: routes `agentId -> pluginId`
+- `appIndex`: routes `appId -> pluginData`（不再使用 agentId 路由）
 - `/ws`: browser WebSocket endpoint
 - `/plugin`: OpenClaw plugin WebSocket endpoint
 - heartbeat uses WebSocket ping/pong every 30 seconds
@@ -632,30 +634,20 @@ Key details:
           },
           "serverUrl": {
             "type": "string",
-            "description": "Chat Server WebSocket URL, for example ws://localhost:3100/plugin"
+            "description": "Chat Server WebSocket URL, for example wss://webchat.zeaho.site/plugin"
           },
-          "pluginId": {
-            "type": "string"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
+          "accounts": {
+            "type": "object",
+            "description": "Multiple account bindings (one appId per Agent)",
+            "additionalProperties": {
               "type": "object",
-              "additionalProperties": false,
               "properties": {
-                "agentId": { "type": "string" },
-                "name": { "type": "string" }
+                "appId": { "type": "string" },
+                "secret": { "type": "string" }
               },
-              "required": ["agentId"]
+              "required": ["appId", "secret"]
             }
-          },
-          "allowFrom": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "dmPolicy": {
-            "type": "string",
-            "enum": ["open", "allowlist", "pairing"]
+          }
           }
         }
       },
@@ -743,9 +735,8 @@ export {
 ### `plugin/src/const.js`
 
 ```js
+// DEFAULT_ACCOUNT_ID 从 SDK 导入：import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
 export const CHANNEL_ID = "webchat";
-export const DEFAULT_ACCOUNT_ID = "default";
-export const DEFAULT_PLUGIN_ID = "webchat-openclaw-plugin";
 export const DEFAULT_SERVER_URL = "ws://localhost:3100/plugin";
 export const TEXT_CHUNK_LIMIT = 3500;
 ```
@@ -757,41 +748,117 @@ export const TEXT_CHUNK_LIMIT = 3500;
 ### `plugin/src/accounts.js`
 
 ```js
-import {
-  DEFAULT_ACCOUNT_ID,
-  DEFAULT_PLUGIN_ID,
-  DEFAULT_SERVER_URL
-} from "./const.js";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk/account-id";
+import { CHANNEL_ID, DEFAULT_SERVER_URL } from "./const.js";
 
-export function resolveWebChatConfig(cfg) {
+/**
+ * 解析 webchat channel 配置（保持兼容性）
+ * 新配置格式：channels.webchat.accounts.{accountId}
+ * 旧配置格式：channels.webchat.serverUrl（兼容过渡，不含 agents）
+ */
+/** 提取 channels.webchat 段（对标 feishu 的 getLarkConfig） */
+export function getWebChatConfig(cfg) {
   return cfg.channels?.webchat || {};
 }
 
-export function listWebChatAccountIds(_cfg) {
+/** 剥离 accounts 键，返回顶层默认值（对标 feishu 的 baseConfig） */
+function baseConfig(section) {
+  const { accounts: _ignored, ...rest } = section;
+  return rest;
+}
+
+/** 深层合并：账号级覆盖顶层，对象字段做浅合并（对标 feishu 的 mergeAccountConfig） */
+function mergeAccountConfig(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override || {})) {
+    if (value === undefined) continue;
+    const baseVal = base[key];
+    if (value && typeof value === 'object' && !Array.isArray(value) &&
+        baseVal && typeof baseVal === 'object' && !Array.isArray(baseVal)) {
+      result[key] = { ...baseVal, ...value };
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * 列出所有 accountId（对标 feishu 的 listAccountIds）
+ */
+export function listWebChatAccountIds(cfg) {
+  const section = getWebChatConfig(cfg);
+  const accounts = section.accounts || {};
+
+  if (accounts && typeof accounts === 'object' && Object.keys(accounts).length > 0) {
+    return Object.keys(accounts);
+  }
+
+  // 兼容旧配置：没有 accounts 时使用默认 ID
   return [DEFAULT_ACCOUNT_ID];
 }
 
-export function resolveDefaultWebChatAccountId(_cfg) {
-  return DEFAULT_ACCOUNT_ID;
+/**
+ * 返回默认 accountId
+ */
+export function getDefaultWebChatAccountId(cfg) {
+  const ids = listWebChatAccountIds(cfg);
+  return ids[0] || DEFAULT_ACCOUNT_ID;
 }
 
-export function resolveWebChatAccount(cfg, accountId = DEFAULT_ACCOUNT_ID) {
-  const section = resolveWebChatConfig(cfg);
+/**
+ * 解析指定 account 的完整配置（对标 feishu 的 resolveAccount）
+ * 注意：一个 account 对应一个 Agent，appId 全局唯一，通过 bindings 绑定到 agentId
+ * 
+ * 新格式示例：
+ * "webchat": {
+ *   "enabled": true,
+ *   "accounts": {
+ *     "my-instance": {
+ *       "appId": "wch_abc123",
+ *       "secret": "sk-xxx",
+ *     }
+ *   }
+ * }
+ */
+export function getWebChatAccount(cfg, accountId = DEFAULT_ACCOUNT_ID) {
+  const section = getWebChatConfig(cfg);
+  if (!section) {
+    return { accountId, enabled: false, configured: false, config: {} };
+  }
+
+  const base = baseConfig(section);
+  const accountMap = section.accounts || {};
+  const accountOverride = accountMap[accountId];
+  const merged = accountOverride ? mergeAccountConfig(base, accountOverride) : { ...base };
+
+  const appId = merged.appId || '';
+  const secret = merged.secret || '';
+  const configured = !!(appId && secret);
 
   return {
     accountId,
-    enabled: section.enabled !== false,
-    serverUrl: section.serverUrl || process.env.WEBCHAT_SERVER_URL || DEFAULT_SERVER_URL,
-    pluginId: section.pluginId || process.env.WEBCHAT_PLUGIN_ID || DEFAULT_PLUGIN_ID,
-    agents: section.agents || [
-      {
-        agentId: "nezha",
-        name: "哪吒"
-      }
-    ],
-    allowFrom: section.allowFrom || ["*"],
-    dmPolicy: section.dmPolicy || "open"
+    enabled: merged.enabled !== false,
+    configured,
+    appId,
+    secret,
+    serverUrl: merged.serverUrl || process.env.WEBCHAT_SERVER_URL || DEFAULT_SERVER_URL,
+    allowFrom: merged.allowFrom || ["*"],
+    dmPolicy: merged.dmPolicy || "open",
+    config: merged,
   };
+}
+
+/** 抽取凭据（对标 feishu 的 getLarkCredentials） */
+export function getWebChatCredentials(cfg) {
+  if (!cfg) return null;
+  const { appId, secret } = cfg;
+  if (!appId || !secret) return null;
+  return { appId, secret };
+}
+
+export function isConfigured(account) {
+  return account.configured;
 }
 ```
 
@@ -810,7 +877,7 @@ const plugin = {
   id: "webchat-openclaw-plugin",
   name: "WebChat",
   description: "Browser WebChat channel for OpenClaw",
-  configSchema: emptyPluginConfigSchema(),
+  configSchema: emptyPluginConfigSchema()
 
   register(api) {
     setWebChatRuntime(api.runtime);
@@ -842,7 +909,7 @@ import { CHANNEL_ID, DEFAULT_ACCOUNT_ID, TEXT_CHUNK_LIMIT } from "./const.js";
 import {
   listWebChatAccountIds,
   resolveWebChatAccount,
-  resolveDefaultWebChatAccountId
+  getDefaultWebChatAccountId
 } from "./accounts.js";
 import {
   startWebChatWsClient,
@@ -863,12 +930,12 @@ const meta = {
 };
 
 export const webchatPlugin = {
-  id: CHANNEL_ID,
+  id: CHANNEL_ID
 
   meta: {
     ...meta,
     quickstartAllowFrom: true
-  },
+  }
 
   capabilities: {
     chatTypes: ["direct"],
@@ -877,26 +944,26 @@ export const webchatPlugin = {
     media: false,
     nativeCommands: false,
     blockStreaming: true
-  },
+  }
 
   reload: {
     configPrefixes: [`channels.${CHANNEL_ID}`]
-  },
+  }
 
   config: {
-    listAccountIds: (cfg) => listWebChatAccountIds(cfg),
+    listAccountIds: (cfg) => listWebChatAccountIds(cfg)
 
     resolveAccount: (cfg, accountId) => {
-      return resolveWebChatAccount(cfg, accountId || DEFAULT_ACCOUNT_ID);
-    },
+      return getWebChatAccount(cfg, accountId || DEFAULT_ACCOUNT_ID);
+    }
 
     defaultAccountId: (cfg) => {
-      return resolveDefaultWebChatAccountId(cfg);
-    },
+      return getDefaultWebChatAccountId(cfg);
+    }
 
     isConfigured: (account) => {
-      return Boolean(account.serverUrl);
-    },
+      return isConfigured(account);
+    }
 
     describeAccount: (account) => {
       return {
@@ -904,21 +971,20 @@ export const webchatPlugin = {
         enabled: account.enabled,
         configured: Boolean(account.serverUrl),
         serverUrl: account.serverUrl,
-        pluginId: account.pluginId,
-        agents: account.agents
+        appId: account.appId
       };
-    },
+    }
 
     resolveAllowFrom: ({ account }) => {
       return account.allowFrom || ["*"];
-    },
+    }
 
     formatAllowFrom: ({ allowFrom }) => {
       return allowFrom
         .map((entry) => String(entry).trim())
         .filter(Boolean);
     }
-  },
+  }
 
   security: {
     resolveDmPolicy: ({ account }) => {
@@ -928,34 +994,34 @@ export const webchatPlugin = {
         approveHint: "Ask the operator to add your WebChat user id to allowFrom."
       };
     }
-  },
+  }
 
   messaging: {
     normalizeTarget: (target) => {
       const trimmed = String(target || "").trim();
       return trimmed || undefined;
-    },
+    }
 
     targetResolver: {
       looksLikeId: (id) => Boolean(String(id || "").trim()),
       hint: "<webchatUserId>"
     }
-  },
+  }
 
   directory: {
     self: async () => null,
     listPeers: async () => [],
     listGroups: async () => []
-  },
+  }
 
   outbound: {
-    deliveryMode: "gateway",
+    deliveryMode: "gateway"
 
     chunker: (text, limit) => {
       return getWebChatRuntime().channel.text.chunkMarkdownText(text, limit);
-    },
+    }
 
-    textChunkLimit: TEXT_CHUNK_LIMIT,
+    textChunkLimit: TEXT_CHUNK_LIMIT
 
     async sendText(params) {
       return sendOutgoingMessage({
@@ -966,7 +1032,7 @@ export const webchatPlugin = {
         cfg: params.cfg
       });
     }
-  },
+  }
 
   status: {
     defaultRuntime: {
@@ -975,7 +1041,7 @@ export const webchatPlugin = {
       lastStartAt: null,
       lastStopAt: null,
       lastError: null
-    },
+    }
 
     collectStatusIssues(accounts) {
       return accounts.flatMap((entry) => {
@@ -995,7 +1061,7 @@ export const webchatPlugin = {
 
         return [];
       });
-    },
+    }
 
     buildChannelSummary: ({ snapshot }) => ({
       configured: snapshot.configured ?? false,
@@ -1003,7 +1069,7 @@ export const webchatPlugin = {
       lastStartAt: snapshot.lastStartAt ?? null,
       lastStopAt: snapshot.lastStopAt ?? null,
       lastError: snapshot.lastError ?? null
-    }),
+    })
 
     buildAccountSnapshot: ({ account, runtime }) => ({
       accountId: account.accountId,
@@ -1014,7 +1080,7 @@ export const webchatPlugin = {
       lastStopAt: runtime?.lastStopAt ?? null,
       lastError: runtime?.lastError ?? null
     })
-  },
+  }
 
   gateway: {
     async startAccount(ctx) {
@@ -1031,7 +1097,7 @@ export const webchatPlugin = {
         abortSignal: ctx.abortSignal,
         setStatus: ctx.setStatus
       });
-    },
+    }
 
     async logoutAccount() {
       await stopWebChatWsClient(DEFAULT_ACCOUNT_ID);
@@ -1097,10 +1163,9 @@ function buildInboundContext({ message, account, cfg }) {
   const core = getWebChatRuntime();
 
   const userId = String(message.userId);
-  const userName = String(message.userName || userId);
   const conversationId = String(message.conversationId || userId);
   const content = String(message.content || "");
-  const agentId = String(message.agentId || account.agents?.[0]?.agentId || "default");
+  const agentId = account.agentId || "default";  // Plugin 通过 bindings 自己的配置确定 agentId
 
   const route = core.channel.routing.resolveAgentRoute({
     cfg,
@@ -1114,7 +1179,8 @@ function buildInboundContext({ message, account, cfg }) {
   });
 
   // Override sessionKey to isolate by (user, agent)
-  route.sessionKey = `${CHANNEL_ID}:${userId}:${agentId}`;
+  // 同一 appId 下，不同 userId → 不同 session，对话历史互不干扰
+  route.sessionKey = `${CHANNEL_ID}:${userId}:${message.appId}`;  // appId 唯一 = 一个 Agent
 
   const storePath = core.channel.session.resolveStorePath(cfg.session?.store, {
     agentId: route.agentId
@@ -1123,29 +1189,28 @@ function buildInboundContext({ message, account, cfg }) {
   const ctxPayload = core.channel.reply.finalizeInboundContext({
     Body: content,
     RawBody: content,
-    CommandBody: content,
+    CommandBody: content
 
-    MessageSid: message.messageId || `webchat_${Date.now()}`,
+    MessageSid: message.messageId || `webchat_${Date.now()}`
 
     From: `${CHANNEL_ID}:${userId}`,
     To: `${CHANNEL_ID}:${conversationId}`,
-    SenderId: userId,
+    SenderId: userId
 
     SessionKey: route.sessionKey,
     AccountId: route.accountId,
-    ChatType: "direct",
-    ConversationLabel: `user:${userName}`,
+    ChatType: "direct"
 
     Timestamp: Date.now(),
     Provider: CHANNEL_ID,
     Surface: CHANNEL_ID,
     OriginatingChannel: CHANNEL_ID,
-    OriginatingTo: `${CHANNEL_ID}:${conversationId}`,
+    OriginatingTo: `${CHANNEL_ID}:${conversationId}`
 
-    CommandAuthorized: true,
+    CommandAuthorized: true
 
     WebChatMessage: message,
-    AgentId: agentId
+    AgentId: agentId  // Plugin 通过 bindings 将 appId 映射到 agentId
   });
 
   return {
@@ -1192,7 +1257,7 @@ async function dispatchIncoming({ message, account, cfg, runtime }) {
     dispatcherOptions: {
       onReplyStart: async () => {
         runtime.log?.(`[webchat] reply started user=${userId} agent=${agentId}`);
-      },
+      }
 
       deliver: async (payload, info) => {
         runtime.log?.(
@@ -1206,10 +1271,9 @@ async function dispatchIncoming({ message, account, cfg, runtime }) {
           to: `${CHANNEL_ID}:${userId}`,
           text,
           accountId: account.accountId,
-          agentId,
           cfg
         });
-      },
+      }
 
       onError: (err, info) => {
         runtime.error?.(
@@ -1254,8 +1318,9 @@ function connectWithReconnect(state) {
 
     sendJson(ws, {
       type: "register",
-      pluginId: account.pluginId,
-      agents: account.agents
+      appId: account.appId,
+      secret: account.secret,
+      // 一个 appId = 一个 Agent，无 agents
     });
 
     heartbeatTimer = setInterval(() => {
@@ -1284,8 +1349,8 @@ function connectWithReconnect(state) {
       return;
     }
 
-    if (message.type === "agent_list") {
-      runtime.log?.(`[webchat] agent_list ${JSON.stringify(message.agents || [])}`);
+    if (message.type === "app_list") {
+      runtime.log?.(`[webchat] app_list ${JSON.stringify(message.agents || [])}`);
       return;
     }
 
@@ -1433,7 +1498,7 @@ export async function sendOutgoingMessage({
   let state = clients.get(accountId);
 
   if (!state && cfg) {
-    const account = resolveWebChatAccount(cfg, accountId);
+    const account = getWebChatAccount(cfg, accountId);
     state = clients.get(account.accountId);
   }
 
@@ -1447,8 +1512,8 @@ export async function sendOutgoingMessage({
 
   sendJson(state.ws, {
     type: "outgoing",
-    pluginId: state.account.pluginId,
-    agentId: agentId || state.account.agents?.[0]?.agentId,
+    appId: state.account.appId,
+    agentId: agentId,  // 通过 bindings 映射到 agentId
     userId,
     conversationId: userId,
     content: text,
@@ -1471,12 +1536,13 @@ The important flow is:
 
 ```text
 Chat Server
-  -> plugin ws-client receives { type: "incoming" }
+  -> plugin ws-client receives { type: "incoming", appId, userId, content } (无 agentId)
+  -> Plugin 查 bindings 映射 appId → agentId
   -> api.runtime.channel.reply.finalizeInboundContext(...)
   -> api.runtime.channel.session.recordInboundSession(...)
   -> api.runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher(...)
   -> dispatcher deliver callback streams reply chunks
-  -> ws-client sends { type: "outgoing" } back to Chat Server
+  -> ws-client sends { type: "outgoing", appId, userId, content } (无 agentId)
 ```
 
 The essential dispatch sequence is this:
@@ -1493,7 +1559,7 @@ const ctxPayload = core.channel.reply.finalizeInboundContext({
   SessionKey: route.sessionKey,
   AccountId: route.accountId,
   ChatType: "direct",
-  ConversationLabel: `user:${userName}`,
+  ConversationLabel: `user:${userId}`,
   Timestamp: Date.now(),
   Provider: "webchat",
   Surface: "webchat",
@@ -1553,7 +1619,7 @@ The channel outbound adapter should only translate OpenClaw’s target into a We
 
 ```js
 outbound: {
-  deliveryMode: "gateway",
+  deliveryMode: "gateway"
 
   async sendText({ to, text, accountId, cfg }) {
     return sendOutgoingMessage({
@@ -1600,7 +1666,7 @@ A minimal browser can connect like this:
     <title>WebChat3.0</title>
   </head>
   <body>
-    <select id="agents"></select>
+    <select id="apps"></select>
     <div id="messages"></div>
     <input id="input" placeholder="Type a message" />
     <button id="send">Send</button>
@@ -1615,7 +1681,7 @@ A minimal browser can connect like this:
           : `ws://${location.host}/ws`;
 
       const ws = new WebSocket(wsUrl);
-      const agents = document.querySelector("#agents");
+      const apps = document.querySelector("#apps");
       const messages = document.querySelector("#messages");
       const input = document.querySelector("#input");
 
@@ -1630,7 +1696,7 @@ A minimal browser can connect like this:
           JSON.stringify({
             type: "register",
             userId,
-            userName: userId
+            // userName defaults to userId
           })
         );
       });
@@ -1638,13 +1704,13 @@ A minimal browser can connect like this:
       ws.addEventListener("message", (event) => {
         const message = JSON.parse(event.data);
 
-        if (message.type === "agent_list") {
-          agents.innerHTML = "";
-          for (const agent of message.agents || []) {
+        if (message.type === "app_list") {
+          apps.innerHTML = "";
+          for (const app of message.apps || []) {
             const option = document.createElement("option");
-            option.value = agent.agentId;
-            option.textContent = agent.name || agent.agentId;
-            agents.appendChild(option);
+            option.value = app.appId;  // appId 唯一标识一个 Agent
+            option.textContent = app.name;  // 展示给用户
+            apps.appendChild(option);
           }
           return;
         }
@@ -1663,7 +1729,7 @@ A minimal browser can connect like this:
         ws.send(
           JSON.stringify({
             type: "message",
-            agentId: agents.value,
+            appId: apps.value,
             content
           })
         );
@@ -1704,18 +1770,20 @@ Example `openclaw.json` channel config:
   "channels": {
     "webchat": {
       "enabled": true,
-      "serverUrl": "ws://localhost:3100/plugin",
-      "pluginId": "webchat-openclaw-plugin",
-      "agents": [
-        {
-          "agentId": "nezha",
-          "name": "哪吒"
-        }
-      ],
-      "dmPolicy": "open",
-      "allowFrom": ["*"]
+      "serverUrl": "wss://webchat.zeaho.site/plugin",
+      "accounts": {
+        "dev-main":   { "appId": "wch_abc123", "secret": "***" },
+        "dev-helper": { "appId": "wch_def456", "secret": "***" },
+        "cloud-main": { "appId": "wch_789ghi", "secret": "***" }
+      }
     }
   }
+
+  "bindings": [
+    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "dev-main" } },
+    { "agentId": "helper", "match": { "channel": "webchat", "accountId": "dev-helper" } },
+    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "cloud-main" } }
+  ]
 }
 ```
 
@@ -1774,18 +1842,17 @@ Plugin config:
   "channels": {
     "webchat": {
       "enabled": true,
-      "serverUrl": "wss://chat.example.com/plugin",
-      "pluginId": "webchat-openclaw-plugin",
-      "agents": [
-        {
-          "agentId": "nezha",
-          "name": "哪吒"
-        }
-      ],
-      "dmPolicy": "open",
-      "allowFrom": ["*"]
+      "serverUrl": "wss://webchat.zeaho.site/plugin",
+      "accounts": {
+        "dev-main": { "appId": "wch_abc123", "secret": "***" },
+        "dev-helper": { "appId": "wch_def456", "secret": "***" }
+      }
     }
-  }
+  },
+  "bindings": [
+    { "agentId": "main", "match": { "channel": "webchat", "accountId": "dev-main" } },
+    { "agentId": "helper", "match": { "channel": "webchat", "accountId": "dev-helper" } }
+  ]
 }
 ```
 
@@ -1825,13 +1892,12 @@ Add authentication to `/plugin` before exposing publicly. The simplest productio
 ```json
 {
   "type": "register",
-  "pluginId": "webchat-openclaw-plugin",
-  "token": "shared-secret",
-  "agents": [...]
+  "appId": "wch_abc123",
+  "secret": "***"
 }
 ```
 
-Then validate `token` in `server.js` before accepting plugin registration.
+Then validate `appId` + `secret` in `server.js` against `apps.json` before accepting plugin registration.
 
 Add browser identity verification if the browser UI is public. Without auth, any browser can claim any `userId`.
 
