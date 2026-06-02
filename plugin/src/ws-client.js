@@ -63,8 +63,6 @@ function buildInboundContext({ message, account, cfg }) {
     throw new Error(`No agent binding found for ${CHANNEL_ID}/${account.accountId}`);
   }
 
-  route.sessionKey = `${CHANNEL_ID}:${userId}:${message.appId}`;
-
   const storePath = core.channel.session.resolveStorePath(cfg.session?.store, {
     agentId,
   });
