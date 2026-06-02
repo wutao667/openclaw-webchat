@@ -18,9 +18,9 @@ export function mergeAccountConfig(base = {}, account = {}) {
 
 export function getWebChatConfig(cfg) {
   if (!cfg) return {};
-  // Full config: openclaw.json with channels.webchat
-  if (cfg.channels?.webchat) return cfg.channels.webchat;
-  // Channel section: already at channels.webchat level
+  // Full config: openclaw.json with channels["openclaw-webchat"]
+  if (cfg.channels?.["openclaw-webchat"]) return cfg.channels["openclaw-webchat"];
+  // Channel section: already at channels["openclaw-webchat"] level
   if (cfg.serverUrl || cfg.accounts) return cfg;
   // Account-level config (Gateway strips unknown fields, only passes appId+secret)
   if (cfg.appId) return cfg;

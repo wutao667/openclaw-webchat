@@ -1,6 +1,6 @@
 {
   "name": "openclaw-webchat-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WebChat Chat Server for OpenClaw \u2014 browser WebSocket relay between users and OpenClaw agents",
   "type": "module",
   "main": "server.js",

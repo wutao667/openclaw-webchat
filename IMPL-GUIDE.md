@@ -9,7 +9,7 @@ WebChat3.0 should be built as two deployable pieces:
    - Server only routes messages and tracks connections
 
 2. `plugin/`: OpenClaw Channel Plugin
-   - Registers a `webchat` channel
+   - Registers a `openclaw-webchat` channel
    - Actively connects outbound to Chat Server
    - Converts browser messages into OpenClaw inbound contexts
    - Sends OpenClaw replies back to Chat Server through WebSocket
@@ -708,9 +708,9 @@ Key details:
 
 ```json
 {
-  "id": "webchat-openclaw-plugin",
+  "id": "openclaw-webchat-plugin",
   "kind": "channel",
-  "channels": ["webchat"],
+  "channels": ["openclaw-webchat"],
   "name": "WebChat",
   "description": "Browser-based WebChat channel for OpenClaw",
   "configSchema": {
@@ -719,7 +719,7 @@ Key details:
     "properties": {}
   },
   "channelConfigs": {
-    "webchat": {
+    "openclaw-webchat": {
       "schema": {
         "type": "object",
         "additionalProperties": false,
@@ -759,7 +759,7 @@ Key details:
 
 ```json
 {
-  "name": "@local/webchat-openclaw-plugin",
+  "name": "openclaw-webchat-plugin",
   "version": "0.1.0",
   "type": "module",
   "main": "index.js",
@@ -785,11 +785,11 @@ Key details:
   "openclaw": {
     "extensions": ["./index.js"],
     "channel": {
-      "id": "webchat",
+      "id": "openclaw-webchat",
       "label": "WebChat",
       "selectionLabel": "WebChat",
-      "docsPath": "/channels/webchat",
-      "docsLabel": "webchat",
+      "docsPath": "/channels/openclaw-webchat",
+      "docsLabel": "openclaw-webchat",
       "blurb": "Browser chat channel for OpenClaw"
     },
     "install": {
@@ -830,7 +830,7 @@ export {
 
 ```js
 // DEFAULT_ACCOUNT_ID 从 SDK 导入：import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
-export const CHANNEL_ID = "webchat";
+export const CHANNEL_ID = "openclaw-webchat";
 export const DEFAULT_SERVER_URL = "ws://localhost:3100/plugin";
 export const TEXT_CHUNK_LIMIT = 3500;
 ```
@@ -847,12 +847,12 @@ import { CHANNEL_ID, DEFAULT_SERVER_URL } from "./const.js";
 
 /**
  * 解析 webchat channel 配置（保持兼容性）
- * 新配置格式：channels.webchat.accounts.{accountId}
- * 旧配置格式：channels.webchat.serverUrl（兼容过渡）
+ * 新配置格式：channels["openclaw-webchat"].accounts.{accountId}
+ * 旧配置格式：channels["openclaw-webchat"].serverUrl（兼容过渡）
  */
-/** 提取 channels.webchat 段（对标 feishu 的 getLarkConfig） */
+/** 提取 channels["openclaw-webchat"] 段（对标 feishu 的 getLarkConfig） */
 export function getWebChatConfig(cfg) {
-  return cfg.channels?.webchat || {};
+  return cfg.channels?.["openclaw-webchat"] || {};
 }
 
 /** 剥离 accounts 键，返回顶层默认值（对标 feishu 的 baseConfig） */
@@ -905,7 +905,7 @@ export function getDefaultWebChatAccountId(cfg) {
  * 注意：一个 account 对应一个 Agent，appId 全局唯一，通过 bindings 绑定到 agentId
  * 
  * 新格式示例：
- * "webchat": {
+ * "openclaw-webchat": {
  *   "enabled": true,
  *   "accounts": {
  *     "my-instance": {
@@ -968,7 +968,7 @@ import { webchatPlugin } from "./src/channel.js";
 import { setWebChatRuntime } from "./src/runtime.js";
 
 const plugin = {
-  id: "webchat-openclaw-plugin",
+  id: "openclaw-webchat-plugin",
   name: "WebChat",
   description: "Browser WebChat channel for OpenClaw",
   configSchema: emptyPluginConfigSchema(),
@@ -1148,7 +1148,7 @@ export const webchatPlugin = {
               accountId: entry.accountId || DEFAULT_ACCOUNT_ID,
               kind: "config",
               message: "WebChat account is missing serverUrl, appId, or secret",
-              fix: "Set channels.webchat.serverUrl and channels.webchat.accounts.<accountId>.appId/secret"
+              fix: "Set channels.openclaw-webchat.serverUrl and channels.openclaw-webchat.accounts.<accountId>.appId/secret"
             }
           ];
         }
@@ -1251,7 +1251,8 @@ function parseJson(raw) {
 }
 
 function stripChannelPrefix(to) {
-  return String(to || "").replace(/^webchat:/i, "");
+  const channelPrefix = new RegExp(`^${CHANNEL_ID}:`, "i");
+  return String(to || "").replace(channelPrefix, "");
 }
 
 function buildInboundContext({ message, account, cfg }) {
@@ -1669,18 +1670,18 @@ const ctxPayload = core.channel.reply.finalizeInboundContext({
   RawBody: content,
   CommandBody: content,
   MessageSid: message.messageId,
-  From: `webchat:${userId}`,
-  To: `webchat:${conversationId}`,
+  From: `openclaw-webchat:${userId}`,
+  To: `openclaw-webchat:${conversationId}`,
   SenderId: userId,
   SessionKey: route.sessionKey,
   AccountId: route.accountId,
   ChatType: "direct",
   ConversationLabel: `user:${userId}`,
   Timestamp: Date.now(),
-  Provider: "webchat",
-  Surface: "webchat",
-  OriginatingChannel: "webchat",
-  OriginatingTo: `webchat:${conversationId}`,
+  Provider: "openclaw-webchat",
+  Surface: "openclaw-webchat",
+  OriginatingChannel: "openclaw-webchat",
+  OriginatingTo: `openclaw-webchat:${conversationId}`,
   CommandAuthorized: true
 });
 
@@ -1690,8 +1691,8 @@ await core.channel.session.recordInboundSession({
   ctx: ctxPayload,
   updateLastRoute: {
     sessionKey: route.mainSessionKey || route.sessionKey,
-    channel: "webchat",
-    to: `webchat:${conversationId}`,
+    channel: "openclaw-webchat",
+    to: `openclaw-webchat:${conversationId}`,
     accountId: route.accountId
   }
 });
@@ -1704,7 +1705,7 @@ await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
       if (!payload.text) return;
 
       await sendOutgoingMessage({
-        to: `webchat:${userId}`,
+        to: `openclaw-webchat:${userId}`,
         text: payload.text,
         accountId: account.accountId
       });
@@ -1750,7 +1751,7 @@ outbound: {
 A typical target is:
 
 ```text
-webchat:u_123
+openclaw-webchat:u_123
 ```
 
 The outgoing frame sent to Chat Server is:
@@ -1914,7 +1915,7 @@ Example `openclaw.json` channel config:
 ```json
 {
   "channels": {
-    "webchat": {
+    "openclaw-webchat": {
       "enabled": true,
       "serverUrl": "wss://webchat.zeaho.site/plugin",
       "accounts": {
@@ -1926,9 +1927,9 @@ Example `openclaw.json` channel config:
   },
 
   "bindings": [
-    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "dev-main" } },
-    { "agentId": "helper", "match": { "channel": "webchat", "accountId": "dev-helper" } },
-    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "cloud-main" } }
+    { "agentId": "main",   "match": { "channel": "openclaw-webchat", "accountId": "dev-main" } },
+    { "agentId": "helper", "match": { "channel": "openclaw-webchat", "accountId": "dev-helper" } },
+    { "agentId": "main",   "match": { "channel": "openclaw-webchat", "accountId": "cloud-main" } }
   ]
 }
 ```
@@ -1947,8 +1948,8 @@ openclaw plugins install --link "$PWD"
 Then inspect:
 
 ```bash
-openclaw plugins inspect webchat-openclaw-plugin --runtime --json
-openclaw channels status webchat
+openclaw plugins inspect openclaw-webchat-plugin --runtime --json
+openclaw channels status openclaw-webchat
 ```
 
 Restart OpenClaw after linking if your runtime does not hot-load linked plugins.
@@ -1986,7 +1987,7 @@ Plugin config:
 ```json
 {
   "channels": {
-    "webchat": {
+    "openclaw-webchat": {
       "enabled": true,
       "serverUrl": "wss://webchat.zeaho.site/plugin",
       "accounts": {
@@ -1996,8 +1997,8 @@ Plugin config:
     }
   },
   "bindings": [
-    { "agentId": "main", "match": { "channel": "webchat", "accountId": "dev-main" } },
-    { "agentId": "helper", "match": { "channel": "webchat", "accountId": "dev-helper" } }
+    { "agentId": "main", "match": { "channel": "openclaw-webchat", "accountId": "dev-main" } },
+    { "agentId": "helper", "match": { "channel": "openclaw-webchat", "accountId": "dev-helper" } }
   ]
 }
 ```

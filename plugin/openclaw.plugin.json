@@ -1,7 +1,7 @@
 {
-  "id": "webchat-openclaw-plugin",
+  "id": "openclaw-webchat-plugin",
   "kind": "channel",
-  "channels": ["webchat"],
+  "channels": ["openclaw-webchat"],
   "name": "WebChat",
   "description": "Browser-based WebChat channel for OpenClaw",
   "configSchema": {
@@ -10,7 +10,7 @@
     "properties": {}
   },
   "channelConfigs": {
-    "webchat": {
+    "openclaw-webchat": {
       "schema": {
         "type": "object",
         "additionalProperties": false,

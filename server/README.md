@@ -43,7 +43,7 @@ your-domain.com {
    ```json
    {
      "channels": {
-       "webchat": {
+       "openclaw-webchat": {
          "enabled": true,
          "serverUrl": "wss://your-domain.com/plugin",
          "agents": [

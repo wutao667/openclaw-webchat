@@ -39,7 +39,8 @@ function parseJson(raw) {
 }
 
 function stripChannelPrefix(to) {
-  return String(to || "").replace(/^webchat:/i, "");
+  const channelPrefix = new RegExp(`^${CHANNEL_ID}:`, "i");
+  return String(to || "").replace(channelPrefix, "");
 }
 
 function buildInboundContext({ message, account, cfg }) {

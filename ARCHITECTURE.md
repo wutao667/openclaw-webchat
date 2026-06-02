@@ -303,7 +303,7 @@ Plugin 连接地址：`wss://CHAT_SERVER_HOST:3100/plugin`
 ```json
 {
   "channels": {
-    "webchat": {
+    "openclaw-webchat": {
       "enabled": true,
       "serverUrl": "wss://webchat.zeaho.site/plugin",
       "accounts": {
@@ -315,9 +315,9 @@ Plugin 连接地址：`wss://CHAT_SERVER_HOST:3100/plugin`
   },
 
   "bindings": [
-    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "dev-main" } },
-    { "agentId": "helper", "match": { "channel": "webchat", "accountId": "dev-helper" } },
-    { "agentId": "main",   "match": { "channel": "webchat", "accountId": "cloud-main" } }
+    { "agentId": "main",   "match": { "channel": "openclaw-webchat", "accountId": "dev-main" } },
+    { "agentId": "helper", "match": { "channel": "openclaw-webchat", "accountId": "dev-helper" } },
+    { "agentId": "main",   "match": { "channel": "openclaw-webchat", "accountId": "cloud-main" } }
   ]
 }
 ```
@@ -364,7 +364,7 @@ Plugin 连接地址：`wss://CHAT_SERVER_HOST:3100/plugin`
 | **Plugin Instance** | appId, ws, accountId | 每个 OpenClaw 部署一个 Plugin，可配置多个 Account；每个 Account 主动建立一条长连并注册一个 appId |
 | **Account** | accountId, appId, secret | Plugin 侧配置，对标飞书 accounts。与 Server 端 App 一一对应（通过 appId）。仅包含连接凭据（serverUrl 为 channel 公共配置），通过 bindings 绑定到 agentId |
 | **Agent** | agentId, name | Plugin 侧的 AI 对话代理。agentId 通过 bindings 与 Server 端 App 关联，仅 Plugin 内部可见 |
-| **OpenClaw Session** | sessionKey("webchat:{userId}:{appId}"), history | Core 管理，按 (用户, app) 二元组隔离会话（appId 全局唯一，= 一个 Agent），跨消息持久化 |
+| **OpenClaw Session** | sessionKey("openclaw-webchat:{userId}:{appId}"), history | Core 管理，按 (用户, app) 二元组隔离会话（appId 全局唯一，= 一个 Agent），跨消息持久化 |
 | **Message** | type, userId, appId, content, messageId | 消息载体，在三条路径间流转。agentId 仅在 Plugin 内部通过 bindings 映射 |
 
 ### 关系图
@@ -420,7 +420,7 @@ Plugin 连接地址：`wss://CHAT_SERVER_HOST:3100/plugin`
 │           │                                                │
 │  ┌────────▼──────────────────────────┐                    │
 │  │  OpenClaw Core Session            │                    │
-│  │  sessionKey = "webchat:{userId}:{appId}"    │             │
+│  │  sessionKey = "openclaw-webchat:{userId}:{appId}"    │             │
 │  │  (每个 user 独立会话，跨重启持久化)  │                    │
 │  └───────────────────────────────────┘                    │
 └──────────────────────────────────────────────────────────┘
@@ -455,11 +455,11 @@ Plugin 连接地址：`wss://CHAT_SERVER_HOST:3100/plugin`
 
 **User ↔ Agent（N:M via Session）**
 - 用户选不同 Agent 对话，同 Agent 服务不同用户
-- **同一 appId（同一 Agent）下，不同 userId 对应不同 session**。例如 appId=wch_abc123，UserA 的 sessionKey 是 `webchat:UserA:wch_abc123`，UserB 的是 `webchat:UserB:wch_abc123`，互不干扰，历史隔离
+- **同一 appId（同一 Agent）下，不同 userId 对应不同 session**。例如 appId=wch_abc123，UserA 的 sessionKey 是 `openclaw-webchat:UserA:wch_abc123`，UserB 的是 `openclaw-webchat:UserB:wch_abc123`，互不干扰，历史隔离
 - Plugin 发消息时使用当前 account 的 appId；agentId 由 `{channel, accountId}` bindings 在 Plugin 内部解析
-- Core 按 `sessionKey = "webchat:{userId}:{appId}"` 管理会话（appId 全局唯一，= 一个 Agent）
+- Core 按 `sessionKey = "openclaw-webchat:{userId}:{appId}"` 管理会话（appId 全局唯一，= 一个 Agent）
 - 每个 `(userId, appId)` 组合有独立对话历史
-- sessionKey 格式：`"webchat:{userId}:{appId}"`
+- sessionKey 格式：`"openclaw-webchat:{userId}:{appId}"`
 
 **Session 生命周期**
 ```
@@ -467,7 +467,7 @@ Browser 第一次发消息
   → Chat Server 路由到 Plugin
   → Plugin dispatchIncoming()
   → finalizeInboundContext(route.sessionKey, agentId)
-  → route.sessionKey = "webchat:{userId}:{appId}"  ← 按用户+app隔离（appId 唯一对应一个 Agent）
+  → route.sessionKey = "openclaw-webchat:{userId}:{appId}"  ← 按用户+app隔离（appId 唯一对应一个 Agent）
   → recordInboundSession()           ← 创建/恢复 Core Session
   → dispatchReplyWithBufferedBlockDispatcher()
   → Agent 处理 → 回复

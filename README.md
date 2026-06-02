@@ -79,15 +79,15 @@ openclaw plugins list
 
 ### 3. 配置 channel
 
-编辑 OpenClaw 配置（`~/.openclaw/openclaw.json`），添加 webchat channel：
+编辑 OpenClaw 配置（`~/.openclaw/openclaw.json`），添加 openclaw-webchat channel：
 
 ```json
 {
   "channels": {
-    "webchat": {
+    "openclaw-webchat": {
       "enabled": true,
       "serverUrl": "wss://your-domain.com/plugin",
-      "pluginId": "webchat-openclaw-plugin",
+      "pluginId": "openclaw-webchat-plugin",
       "agents": [
         { "agentId": "main", "name": "研发小虾" }
       ],
@@ -101,7 +101,7 @@ openclaw plugins list
 |--------|------|--------|
 | `enabled` | 启用开关 | `true` |
 | `serverUrl` | Chat Server 的 `/plugin` WebSocket 地址 | `ws://localhost:3100/plugin` |
-| `pluginId` | Plugin ID，和 `openclaw.plugin.json` 一致 | `webchat-openclaw-plugin` |
+| `pluginId` | Plugin ID，和 `openclaw.plugin.json` 一致 | `openclaw-webchat-plugin` |
 | `agents` | 暴露给用户的 Agent 列表 | `[{ agentId: "nezha", name: "哪吒" }]` |
 | `dmPolicy` | 私聊策略 | `open` |
 
@@ -151,7 +151,7 @@ Plugin 的 `serverUrl` 配置为 `wss://your-domain.com/plugin`。
 
 ## Session 模型
 
-- `sessionKey = webchat:{userId}:{agentId}` — 按用户+Agent 隔离会话
+- `sessionKey = openclaw-webchat:{userId}:{agentId}` — 按用户+Agent 隔离会话
 - 同一用户在不同浏览器登录同一个 Agent，共享会话历史
 - 不同用户之间的会话完全隔离
 - 服务端内存保留最近 100 条消息

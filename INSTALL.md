@@ -77,7 +77,7 @@ openclaw plugins install openclaw-webchat-plugin
 在 Gateway 的 `channels` 段加：
 
 ```json
-"webchat": {
+"openclaw-webchat": {
     "enabled": true,
     "serverUrl": "wss://test.huaguo.site/plugin",
     "accounts": {
@@ -89,7 +89,7 @@ openclaw plugins install openclaw-webchat-plugin
 },
 "bindings": [
     {
-        "channel": "webchat",
+        "channel": "openclaw-webchat",
         "accountId": "my-account",
         "agentId": "main"
     }

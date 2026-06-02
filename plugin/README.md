@@ -45,10 +45,10 @@ Edit `~/.openclaw/openclaw.json`:
 ```json
 {
   "channels": {
-    "webchat": {
+    "openclaw-webchat": {
       "enabled": true,
       "serverUrl": "wss://your-domain.com/plugin",
-      "pluginId": "webchat-openclaw-plugin",
+      "pluginId": "openclaw-webchat-plugin",
       "agents": [
         { "agentId": "main", "name": "我的助手" }
       ]
@@ -96,7 +96,7 @@ Each instance installs the plugin with a different `agentId`, all connecting to 
 
 ## Session Isolation
 
-- Session key: `webchat:{userId}:{agentId}`
+- Session key: `openclaw-webchat:{userId}:{agentId}`
 - Same user + same agent across browsers → shared history
 - Different users → completely isolated
 

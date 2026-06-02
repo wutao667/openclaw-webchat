@@ -97,7 +97,7 @@ export const webchatPlugin = {
           issues.push({
             kind: "warning",
             message: "WebChat account is missing serverUrl, appId, or secret",
-            fix: "Set channels.webchat.serverUrl and channels.webchat.accounts.<accountId>.appId/secret",
+            fix: "Set channels.openclaw-webchat.serverUrl and channels.openclaw-webchat.accounts.<accountId>.appId/secret",
           });
         }
       }
