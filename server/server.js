@@ -3,13 +3,17 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const PORT = Number(process.env.PORT || 3100);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, 'public');
+const JWT_SECRET = process.env.ADMIN_JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const APPS_FILE = path.join(__dirname, 'apps.json');
 
 const browsers = new Map();
 const browserMeta = new WeakMap();
@@ -36,15 +40,27 @@ const contentTypes = {
 };
 
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+
+  // Admin API routes
+  if (url.pathname.startsWith('/api/admin/')) {
+    handleAdminRoute(url, req, res);
+    return;
+  }
+
   if (req.method !== 'GET') {
     sendText(res, 405, 'Method Not Allowed');
     return;
   }
 
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-
   if (url.pathname === '/healthz') {
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // Redirect /admin to /admin/index.html
+  if (url.pathname === '/admin' || url.pathname === '/admin/') {
+    serveStatic('/admin/index.html', res);
     return;
   }
 
@@ -54,7 +70,32 @@ const server = http.createServer((req, res) => {
 const browserWss = new WebSocketServer({ noServer: true });
 const pluginWss = new WebSocketServer({ noServer: true });
 
+initAppsFile();
 loadAppRegistry();
+
+function initAppsFile() {
+  if (!fs.existsSync(APPS_FILE)) {
+    const hash = bcrypt.hashSync('admin', 10);
+    fs.writeFileSync(APPS_FILE, JSON.stringify({ adminPassword: hash, apps: {} }, null, 2) + '\n');
+    console.log('[admin] created apps.json with default password');
+    return;
+  }
+
+  const data = JSON.parse(fs.readFileSync(APPS_FILE, 'utf8'));
+  if (!data.adminPassword) {
+    data.adminPassword = bcrypt.hashSync('admin', 10);
+    fs.writeFileSync(APPS_FILE, JSON.stringify(data, null, 2) + '\n');
+    console.log('[admin] reset admin password to default');
+  }
+}
+
+function readAppsFile() {
+  return JSON.parse(fs.readFileSync(APPS_FILE, 'utf8'));
+}
+
+function writeAppsFile(data) {
+  fs.writeFileSync(APPS_FILE, JSON.stringify(data, null, 2) + '\n');
+}
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -529,4 +570,310 @@ function sendJson(res, statusCode, body) {
 function sendText(res, statusCode, body) {
   res.writeHead(statusCode, { 'content-type': 'text/plain; charset=utf-8' });
   res.end(body);
+}
+
+// ── Admin helpers ──────────────────────────────────────────────────────────────
+
+async function readJsonBody(req, limit = 64 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    chunks.push(chunk);
+    size += Buffer.byteLength(chunk);
+    if (size > limit) throw new Error('body_too_large');
+  }
+  const raw = Buffer.concat(chunks).toString();
+  return raw.trim() ? JSON.parse(raw) : {};
+}
+
+function requireAdmin(req, res) {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+
+  if (!token) {
+    sendJson(res, 401, { ok: false, error: 'missing_token' });
+    return false;
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      sendJson(res, 403, { ok: false, error: 'invalid_role' });
+      return false;
+    }
+    return true;
+  } catch {
+    sendJson(res, 401, { ok: false, error: 'invalid_or_expired_token' });
+    return false;
+  }
+}
+
+// ── Admin route dispatcher ─────────────────────────────────────────────────────
+
+async function handleAdminRoute(url, req, res) {
+  const pathname = url.pathname;
+
+  try {
+    // POST /api/admin/login
+    if (pathname === '/api/admin/login' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      return handleAdminLogin(body, res);
+    }
+
+    // PUT /api/admin/password
+    if (pathname === '/api/admin/password') {
+      if (req.method !== 'PUT') {
+        return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
+      }
+      if (!requireAdmin(req, res)) return;
+      const body = await readJsonBody(req);
+      return handleAdminPassword(body, res);
+    }
+
+    // GET/POST /api/admin/apps
+    if (pathname === '/api/admin/apps') {
+      if (req.method === 'GET') {
+        if (!requireAdmin(req, res)) return;
+        return handleAdminListApps(res);
+      }
+      if (req.method === 'POST') {
+        if (!requireAdmin(req, res)) return;
+        const body = await readJsonBody(req);
+        return handleAdminCreateApp(body, res);
+      }
+      return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
+    }
+
+    // /api/admin/apps/:appId
+    const appMatch = pathname.match(/^\/api\/admin\/apps\/(wch_[0-9a-f]{16})$/);
+    if (appMatch) {
+      const appId = appMatch[1];
+
+      if (req.method === 'GET') {
+        if (!requireAdmin(req, res)) return;
+        return handleAdminGetApp(appId, res);
+      }
+      if (req.method === 'DELETE') {
+        if (!requireAdmin(req, res)) return;
+        return handleAdminDeleteApp(appId, res);
+      }
+      if (req.method === 'PATCH') {
+        if (!requireAdmin(req, res)) return;
+        const body = await readJsonBody(req);
+        return handleAdminPatchApp(appId, body, res);
+      }
+      return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
+    }
+
+    sendJson(res, 404, { ok: false, error: 'not_found' });
+  } catch (err) {
+    if (err.message === 'body_too_large') {
+      return sendJson(res, 400, { ok: false, error: 'body_too_large' });
+    }
+    return sendJson(res, 400, { ok: false, error: 'invalid_body' });
+  }
+}
+
+// ── Admin route handlers ───────────────────────────────────────────────────────
+
+function handleAdminLogin(body, res) {
+  const { password } = body || {};
+
+  if (typeof password !== 'string' || !password.trim()) {
+    return sendJson(res, 400, { ok: false, error: 'password_required' });
+  }
+
+  const store = readAppsFile();
+  if (!store.adminPassword) {
+    return sendJson(res, 500, { ok: false, error: 'admin_password_not_initialized' });
+  }
+
+  if (!bcrypt.compareSync(password, store.adminPassword)) {
+    return sendJson(res, 401, { ok: false, error: 'invalid_password' });
+  }
+
+  const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+  return sendJson(res, 200, { ok: true, token, expiresIn: 86400 });
+}
+
+function handleAdminListApps(res) {
+  const store = readAppsFile();
+  const apps = Object.values(store.apps || {})
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .map((app) => ({
+      appId: app.appId,
+      name: app.name,
+      enabled: app.enabled !== false,
+      connected: plugins.has(app.appId),
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt || app.createdAt,
+    }));
+
+  return sendJson(res, 200, { ok: true, apps });
+}
+
+function handleAdminCreateApp(body, res) {
+  const { name } = body || {};
+
+  if (typeof name !== 'string' || !name.trim()) {
+    return sendJson(res, 400, { ok: false, error: 'name_required' });
+  }
+
+  const trimmedName = name.trim();
+  if (trimmedName.length > 64) {
+    return sendJson(res, 400, { ok: false, error: 'name_too_long' });
+  }
+
+  const store = readAppsFile();
+
+  // Generate unique appId
+  let appId;
+  for (let i = 0; i < 10; i++) {
+    appId = 'wch_' + crypto.randomBytes(8).toString('hex');
+    if (!store.apps[appId]) break;
+    appId = null;
+  }
+  if (!appId) {
+    return sendJson(res, 500, { ok: false, error: 'app_id_generation_failed' });
+  }
+
+  const secret = 'sk-wch-' + crypto.randomBytes(16).toString('hex');
+  const secretHash = bcrypt.hashSync(secret, 10);
+  const now = new Date().toISOString();
+
+  store.apps[appId] = {
+    appId,
+    secretHash,
+    name: trimmedName,
+    createdAt: now,
+    updatedAt: now,
+    enabled: true,
+  };
+
+  try {
+    writeAppsFile(store);
+    loadAppRegistry();
+  } catch {
+    return sendJson(res, 500, { ok: false, error: 'save_failed' });
+  }
+
+  return sendJson(res, 200, {
+    ok: true,
+    app: {
+      appId,
+      name: trimmedName,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    },
+    secret,
+  });
+}
+
+function handleAdminGetApp(appId, res) {
+  const store = readAppsFile();
+  const app = store.apps[appId];
+  if (!app) {
+    return sendJson(res, 404, { ok: false, error: 'app_not_found' });
+  }
+
+  return sendJson(res, 200, {
+    ok: true,
+    app: {
+      appId: app.appId,
+      name: app.name,
+      enabled: app.enabled !== false,
+      connected: plugins.has(app.appId),
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt || app.createdAt,
+    },
+  });
+}
+
+function handleAdminDeleteApp(appId, res) {
+  const store = readAppsFile();
+  if (!store.apps[appId]) {
+    return sendJson(res, 404, { ok: false, error: 'app_not_found' });
+  }
+
+  delete store.apps[appId];
+
+  try {
+    writeAppsFile(store);
+    loadAppRegistry();
+  } catch {
+    return sendJson(res, 500, { ok: false, error: 'save_failed' });
+  }
+
+  return sendJson(res, 200, { ok: true, appId });
+}
+
+function handleAdminPatchApp(appId, body, res) {
+  const store = readAppsFile();
+  const app = store.apps[appId];
+  if (!app) {
+    return sendJson(res, 404, { ok: false, error: 'app_not_found' });
+  }
+
+  if (typeof body.enabled !== 'boolean') {
+    return sendJson(res, 400, { ok: false, error: 'enabled_required' });
+  }
+
+  app.enabled = body.enabled;
+  app.updatedAt = new Date().toISOString();
+
+  try {
+    writeAppsFile(store);
+    loadAppRegistry();
+  } catch {
+    return sendJson(res, 500, { ok: false, error: 'save_failed' });
+  }
+
+  return sendJson(res, 200, {
+    ok: true,
+    app: {
+      appId: app.appId,
+      name: app.name,
+      enabled: app.enabled,
+      connected: plugins.has(app.appId),
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt,
+    },
+  });
+}
+
+function handleAdminPassword(body, res) {
+  const { oldPassword, newPassword } = body || {};
+
+  if (typeof oldPassword !== 'string' || !oldPassword.trim()) {
+    return sendJson(res, 400, { ok: false, error: 'old_password_required' });
+  }
+
+  if (typeof newPassword !== 'string' || !newPassword.trim()) {
+    return sendJson(res, 400, { ok: false, error: 'new_password_required' });
+  }
+
+  const trimmedNew = newPassword.trim();
+  if (trimmedNew.length < 6) {
+    return sendJson(res, 400, { ok: false, error: 'new_password_too_short' });
+  }
+
+  if (trimmedNew === oldPassword.trim()) {
+    return sendJson(res, 400, { ok: false, error: 'password_unchanged' });
+  }
+
+  const store = readAppsFile();
+  if (!bcrypt.compareSync(oldPassword, store.adminPassword)) {
+    return sendJson(res, 401, { ok: false, error: 'invalid_old_password' });
+  }
+
+  store.adminPassword = bcrypt.hashSync(trimmedNew, 10);
+
+  try {
+    writeAppsFile(store);
+  } catch {
+    return sendJson(res, 500, { ok: false, error: 'save_failed' });
+  }
+
+  return sendJson(res, 200, { ok: true });
 }

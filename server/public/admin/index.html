@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 - WebChat</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f0f2f5; color: #333; display: flex;
+    justify-content: center; align-items: center; min-height: 100vh;
+  }
+  .login-box {
+    background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    padding: 40px; width: 360px;
+  }
+  .login-box h1 { font-size: 22px; text-align: center; margin-bottom: 8px; }
+  .login-box p.sub { color: #888; text-align: center; font-size: 14px; margin-bottom: 24px; }
+  .login-box label { display: block; font-size: 14px; margin-bottom: 6px; color: #555; }
+  .login-box input[type="password"] {
+    width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #d9d9d9;
+    border-radius: 6px; outline: none; transition: border .2s;
+  }
+  .login-box input[type="password"]:focus { border-color: #1677ff; }
+  .login-box .error { color: #ff4d4f; font-size: 13px; margin-top: 8px; display: none; }
+  .login-box button {
+    width: 100%; padding: 10px; margin-top: 16px; font-size: 15px;
+    background: #1677ff; color: #fff; border: none; border-radius: 6px;
+    cursor: pointer; transition: opacity .2s;
+  }
+  .login-box button:hover { opacity: .9; }
+  .login-box button:disabled { opacity: .5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>管理后台</h1>
+  <p class="sub">WebChat Chat Server</p>
+  <label for="password">管理员密码</label>
+  <input type="password" id="password" placeholder="输入密码" autofocus>
+  <div class="error" id="error"></div>
+  <button id="loginBtn" onclick="login()">登 录</button>
+</div>
+
+<script>
+async function login() {
+  const password = document.getElementById('password').value;
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('error');
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '登录中...';
+
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      sessionStorage.setItem('adminToken', data.token);
+      location.href = '/admin/dashboard.html';
+    } else {
+      const msg = errorMessage(data.error);
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = '无法连接服务器';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登 录';
+  }
+}
+
+function errorMessage(code) {
+  const map = {
+    'password_required': '请输入密码',
+    'invalid_password': '密码错误',
+    'admin_password_not_initialized': '服务端未初始化',
+    'invalid_body': '请求格式错误',
+  };
+  return map[code] || '登录失败，请重试';
+}
+
+document.getElementById('password').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') login();
+});
+</script>
+</body>
+</html>

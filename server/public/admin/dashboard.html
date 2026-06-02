@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 - WebChat</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f0f2f5; color: #333; min-height: 100vh;
+  }
+  .topbar {
+    background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 24px;
+    height: 56px; display: flex; align-items: center; gap: 16px;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 600; margin-right: auto; }
+  .topbar a, .topbar button {
+    font-size: 14px; cursor: pointer; text-decoration: none;
+  }
+  .topbar button {
+    background: none; border: 1px solid #d9d9d9; border-radius: 6px;
+    padding: 6px 14px; color: #333; transition: all .2s;
+  }
+  .topbar button:hover { border-color: #1677ff; color: #1677ff; }
+  .topbar .logout { color: #ff4d4f; border-color: #ff4d4f; }
+  .topbar .logout:hover { background: #fff2f0; }
+  .container { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .toolbar button {
+    background: #1677ff; color: #fff; border: none; border-radius: 6px;
+    padding: 8px 18px; font-size: 14px; cursor: pointer; transition: opacity .2s;
+  }
+  .toolbar button:hover { opacity: .9; }
+  .toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+  table {
+    width: 100%; border-collapse: collapse; background: #fff;
+    border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+  th { background: #fafafa; font-weight: 600; color: #555; }
+  td { vertical-align: middle; }
+  td.app-id { font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; color: #1677ff; }
+  td.actions { white-space: nowrap; }
+  td.actions button {
+    background: none; border: 1px solid #d9d9d9; border-radius: 4px;
+    padding: 4px 10px; font-size: 12px; cursor: pointer; margin: 0 2px;
+    transition: all .2s;
+  }
+  td.actions .delete { color: #ff4d4f; border-color: #ff4d4f; }
+  td.actions .delete:hover { background: #fff2f0; }
+  td.actions .toggle { color: #1677ff; border-color: #1677ff; }
+  td.actions .toggle:hover { background: #e6f4ff; }
+  td.actions .toggle.disabled { color: #faad14; border-color: #faad14; }
+  td.actions .toggle.disabled:hover { background: #fffbe6; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 12px; font-weight: 500;
+  }
+  .badge.on { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+  .badge.off { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+  .badge.connected { background: #e6f4ff; color: #1677ff; border: 1px solid #91caff; }
+  .badge.disconnected { background: #fafafa; color: #999; border: 1px solid #d9d9d9; }
+  .empty { text-align: center; padding: 48px 16px; color: #999; font-size: 14px; }
+  .checkbox-cell { text-align: center; }
+  .checkbox-cell input { cursor: pointer; width: 16px; height: 16px; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    justify-content: center; align-items: center; z-index: 1000;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #fff; border-radius: 8px; padding: 28px; width: 480px;
+    max-width: 94vw; box-shadow: 0 6px 30px rgba(0,0,0,.12);
+  }
+  .modal h2 { font-size: 17px; margin-bottom: 20px; }
+  .modal label { display: block; font-size: 14px; margin-bottom: 6px; color: #555; }
+  .modal input[type="text"], .modal input[type="password"] {
+    width: 100%; padding: 8px 12px; font-size: 14px; border: 1px solid #d9d9d9;
+    border-radius: 6px; outline: none; transition: border .2s;
+  }
+  .modal input:focus { border-color: #1677ff; }
+  .modal .actions { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+  .modal .actions button {
+    padding: 8px 20px; font-size: 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #d9d9d9; background: #fff; transition: all .2s;
+  }
+  .modal .actions .primary { background: #1677ff; color: #fff; border-color: #1677ff; }
+  .modal .actions .primary:hover { opacity: .9; }
+  .modal .actions .danger { color: #ff4d4f; border-color: #ff4d4f; }
+  .modal .actions .danger:hover { background: #fff2f0; }
+
+  /* Secret display */
+  .secret-box {
+    background: #f6f8fa; border: 1px solid #e8e8e8; border-radius: 6px;
+    padding: 16px; margin: 12px 0;
+  }
+  .secret-box .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .secret-box .value {
+    font-family: "SF Mono", "Fira Code", monospace; font-size: 13px;
+    word-break: break-all; color: #333;
+  }
+  .secret-warning { color: #ff4d4f; font-size: 13px; margin-top: 8px; }
+
+  .toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: #333; color: #fff; padding: 10px 24px; border-radius: 6px;
+    font-size: 14px; z-index: 2000; display: none;
+  }
+  .toast.error { background: #ff4d4f; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>管理后台</h1>
+  <a href="#" onclick="showPasswordModal()" style="color:#1677ff">修改密码</a>
+  <button class="logout" onclick="logout()">退出登录</button>
+</div>
+
+<div class="container">
+  <div class="toolbar">
+    <button onclick="showCreateModal()">+ 创建 App</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>App ID</th>
+        <th>名称</th>
+        <th>状态</th>
+        <th>连接</th>
+        <th>创建时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="appList"></tbody>
+  </table>
+  <div class="empty" id="emptyState">暂无 App，点击上方按钮创建</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Create App Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <h2>创建 App</h2>
+    <label for="appName">Agent 展示名称</label>
+    <input type="text" id="appName" placeholder="例如：研发小虾" maxlength="64">
+    <div class="actions">
+      <button onclick="closeModal('createModal')">取消</button>
+      <button class="primary" onclick="createApp()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- Secret Display Modal -->
+<div class="modal-overlay" id="secretModal">
+  <div class="modal">
+    <h2>创建成功</h2>
+    <p style="font-size:14px;margin-bottom:12px">请立即复制保存以下信息，<strong>secret 仅在此显示一次</strong>。</p>
+    <div class="secret-box">
+      <div class="label">App ID</div>
+      <div class="value" id="secretAppId"></div>
+    </div>
+    <div class="secret-box">
+      <div class="label">Secret</div>
+      <div class="value" id="secretValue"></div>
+    </div>
+    <div class="secret-warning">⚠ 关闭后无法再次查看 secret</div>
+    <div class="actions">
+      <button class="primary" onclick="closeSecretModal()">已复制，关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <h2>确认删除</h2>
+    <p id="deleteInfo" style="font-size:14px;margin-bottom:12px"></p>
+    <p style="font-size:13px;color:#888">已连接的 Plugin 不受影响，但下次重连将被拒绝。</p>
+    <div class="actions">
+      <button onclick="closeModal('deleteModal')">取消</button>
+      <button class="danger" onclick="confirmDeleteAction()">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Disable Confirmation Modal -->
+<div class="modal-overlay" id="disableModal">
+  <div class="modal">
+    <h2 id="disableTitle">确认操作</h2>
+    <p id="disableInfo" style="font-size:14px;margin-bottom:12px"></p>
+    <div class="actions">
+      <button onclick="closeModal('disableModal')">取消</button>
+      <button class="primary" id="disableConfirmBtn" onclick="confirmToggle()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal-overlay" id="passwordModal">
+  <div class="modal">
+    <h2>修改密码</h2>
+    <div style="margin-bottom:12px">
+      <label for="oldPassword">旧密码</label>
+      <input type="password" id="oldPassword" placeholder="输入旧密码">
+    </div>
+    <div style="margin-bottom:12px">
+      <label for="newPassword">新密码</label>
+      <input type="password" id="newPassword" placeholder="输入新密码（至少 6 位）">
+    </div>
+    <div style="margin-bottom:12px">
+      <label for="confirmPassword">确认新密码</label>
+      <input type="password" id="confirmPassword" placeholder="再次输入新密码">
+    </div>
+    <div class="actions">
+      <button onclick="closeModal('passwordModal')">取消</button>
+      <button class="primary" onclick="changePassword()">确认修改</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+const TOKEN_KEY = 'adminToken';
+
+function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+
+function requireAuth() {
+  if (!getToken()) { location.href = '/admin'; return false; }
+  return true;
+}
+
+function logout() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  location.href = '/admin';
+}
+
+// ── API ───────────────────────────────────────────────────────────────────
+
+async function adminFetch(path, options = {}) {
+  const token = getToken();
+  if (!token) { location.href = '/admin'; throw new Error('missing_token'); }
+
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await res.json();
+  if (res.status === 401) {
+    sessionStorage.removeItem(TOKEN_KEY);
+    location.href = '/admin';
+    throw new Error(data.error || 'unauthorized');
+  }
+  if (!res.ok || !data.ok) throw new Error(data.error || 'request_failed');
+  return data;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+
+let toastTimer = null;
+
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast' + (type === 'error' ? ' error' : '');
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function closeSecretModal() { closeModal('secretModal'); loadApps(); }
+
+// ── Load apps ─────────────────────────────────────────────────────────────
+
+async function loadApps() {
+  if (!requireAuth()) return;
+
+  try {
+    const data = await adminFetch('/api/admin/apps');
+    renderTable(data.apps || []);
+  } catch (e) {
+    showToast('加载失败: ' + e.message, 'error');
+  }
+}
+
+function renderTable(apps) {
+  const tbody = document.getElementById('appList');
+  const empty = document.getElementById('emptyState');
+
+  if (apps.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  tbody.innerHTML = apps.map(app => {
+    const enabled = app.enabled !== false;
+    const connected = app.connected || false;
+    const createdAt = app.createdAt ? formatDate(app.createdAt) : '-';
+    return `<tr>
+      <td class="app-id">${escHtml(app.appId)}</td>
+      <td>${escHtml(app.name)}</td>
+      <td><span class="badge ${enabled ? 'on' : 'off'}">${enabled ? '启用' : '禁用'}</span></td>
+      <td><span class="badge ${connected ? 'connected' : 'disconnected'}">${connected ? '已连接' : '未连接'}</span></td>
+      <td>${createdAt}</td>
+      <td class="actions">
+        ${enabled
+          ? `<button class="toggle" onclick="confirmDisable('${app.appId}','${escHtml(app.name)}')">禁用</button>`
+          : `<button class="toggle disabled" onclick="enableApp('${app.appId}')">启用</button>`
+        }
+        <button class="delete" onclick="confirmDelete('${app.appId}','${escHtml(app.name)}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function formatDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('zh-CN', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return iso; }
+}
+
+function escHtml(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Create App ────────────────────────────────────────────────────────────
+
+function showCreateModal() {
+  document.getElementById('appName').value = '';
+  openModal('createModal');
+  document.getElementById('appName').focus();
+}
+
+async function createApp() {
+  const name = document.getElementById('appName').value.trim();
+  if (!name) { showToast('请输入 App 名称', 'error'); return; }
+
+  try {
+    const data = await adminFetch('/api/admin/apps', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    closeModal('createModal');
+
+    // Show secret
+    document.getElementById('secretAppId').textContent = data.app.appId;
+    document.getElementById('secretValue').textContent = data.secret;
+    openModal('secretModal');
+  } catch (e) {
+    showToast('创建失败: ' + e.message, 'error');
+  }
+}
+
+// ── Delete App ────────────────────────────────────────────────────────────
+
+let deleteTarget = null;
+
+function confirmDelete(appId, name) {
+  deleteTarget = { appId, name };
+  document.getElementById('deleteInfo').textContent = '确定要删除 App「' + name + '」(ID: ' + appId + ') 吗？';
+  openModal('deleteModal');
+}
+
+async function confirmDeleteAction() {
+  if (!deleteTarget) return;
+
+  try {
+    await adminFetch('/api/admin/apps/' + deleteTarget.appId, { method: 'DELETE' });
+    closeModal('deleteModal');
+    deleteTarget = null;
+    showToast('删除成功');
+    loadApps();
+  } catch (e) {
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+// ── Enable/Disable App ────────────────────────────────────────────────────
+
+let toggleTarget = null;
+let toggleNewState = null;
+
+function confirmDisable(appId, name) {
+  toggleTarget = { appId, name };
+  toggleNewState = false;
+  document.getElementById('disableTitle').textContent = '确认禁用';
+  document.getElementById('disableInfo').textContent = '确定要禁用 App「' + name + '」(ID: ' + appId + ') 吗？已连接的 Plugin 不受影响，但新的连接将被拒绝。';
+  document.getElementById('disableConfirmBtn').textContent = '确认禁用';
+  document.getElementById('disableConfirmBtn').className = 'danger';
+  openModal('disableModal');
+}
+
+async function enableApp(appId) {
+  try {
+    await adminFetch('/api/admin/apps/' + appId, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: true }),
+    });
+    showToast('已启用');
+    loadApps();
+  } catch (e) {
+    showToast('操作失败: ' + e.message, 'error');
+  }
+}
+
+async function confirmToggle() {
+  if (!toggleTarget) return;
+
+  try {
+    await adminFetch('/api/admin/apps/' + toggleTarget.appId, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: toggleNewState }),
+    });
+    closeModal('disableModal');
+    showToast(toggleNewState ? '已启用' : '已禁用');
+    toggleTarget = null;
+    loadApps();
+  } catch (e) {
+    showToast('操作失败: ' + e.message, 'error');
+  }
+}
+
+// ── Change Password ───────────────────────────────────────────────────────
+
+function showPasswordModal() {
+  document.getElementById('oldPassword').value = '';
+  document.getElementById('newPassword').value = '';
+  document.getElementById('confirmPassword').value = '';
+  openModal('passwordModal');
+}
+
+async function changePassword() {
+  const oldPw = document.getElementById('oldPassword').value;
+  const newPw = document.getElementById('newPassword').value;
+  const confirmPw = document.getElementById('confirmPassword').value;
+
+  if (!oldPw) { showToast('请输入旧密码', 'error'); return; }
+  if (!newPw) { showToast('请输入新密码', 'error'); return; }
+  if (newPw.length < 6) { showToast('新密码至少 6 位', 'error'); return; }
+  if (newPw !== confirmPw) { showToast('两次输入的新密码不一致', 'error'); return; }
+
+  try {
+    await adminFetch('/api/admin/password', {
+      method: 'PUT',
+      body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+    });
+    closeModal('passwordModal');
+    showToast('密码修改成功');
+  } catch (e) {
+    showToast('修改失败: ' + e.message, 'error');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!requireAuth()) return;
+  loadApps();
+});
+</script>
+</body>
+</html>

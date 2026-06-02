@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.2",
     "ws": "^8.18.0"
   },
   "engines": {
