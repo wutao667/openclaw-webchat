@@ -78,7 +78,7 @@ function buildInboundContext({ message, account, cfg }) {
     To: `${CHANNEL_ID}:${conversationId}`,
     SenderId: userId,
     SessionKey: route.sessionKey,
-    AccountId: route.accountId,
+    AccountId: account.accountId,
     ChatType: "direct",
     ConversationLabel: `user:${String(message.userName || userId)}`,
     Timestamp: Date.now(),
