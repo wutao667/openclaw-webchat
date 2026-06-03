@@ -15,3 +15,6 @@ test_ident*.js
 
 # Logs
 *.log
+
+# Local drafts (research notes, plan outputs, etc.)
+drafts/
