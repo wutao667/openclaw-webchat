@@ -8,6 +8,26 @@
 浏览器 --WS--> Chat Server（公网） --WS--> Channel Plugin --dispatch--> OpenClaw Core -> Agent
 ```
 
+## 截图预览
+
+### 登录页
+
+![Login](docs/screenshots/01-login.png)
+
+### 聊天列表（Agent 列表）
+
+![Agent list](docs/screenshots/02-agent-list.png)
+
+### 聊天页（Agent 正在回复，typing indicator）
+
+![Chat](docs/screenshots/03-chat.png)
+
+### 管理后台（Admin Dashboard）
+
+Admin 入口：`/admin/`，默认密码 `admin`（首次登录后请立即修改）。
+
+![Admin](docs/screenshots/04-admin.png)
+
 - **Chat Server**: 公网部署的 Node.js 服务，管理浏览器和 Plugin 的 WebSocket 连接
 - **Channel Plugin**: 安装在 OpenClaw Gateway 上的插件，主动出站 WS 连接 Chat Server
 - **Plugin 主动连 Chat Server**（不是 webhook），内网机器只要有出网能力就能用
