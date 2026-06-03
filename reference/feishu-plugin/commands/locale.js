@@ -1,8 +1,0 @@
-"use strict";
-/**
- * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- *
- * Shared locale type for feishu command i18n.
- */
-Object.defineProperty(exports, "__esModule", { value: true });
