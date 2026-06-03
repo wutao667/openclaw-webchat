@@ -23,11 +23,11 @@ On any machine with a public IP (or reachable from both browser and plugin):
 npx openclaw-webchat-server
 ```
 
-Or clone the [repo](https://github.com/wutao667/openclaw-wechat) and run locally:
+Or clone the [repo](https://github.com/wutao667/openclaw-webchat) and run locally:
 
 ```bash
-git clone https://github.com/wutao667/openclaw-wechat.git
-cd openclaw-wechat/server
+git clone https://github.com/wutao667/openclaw-webchat.git
+cd openclaw-webchat/server
 npm install
 node server.js
 ```
@@ -102,4 +102,4 @@ Each instance installs the plugin with a different `agentId`, all connecting to 
 
 ## Development
 
-Full source code at [github.com/wutao667/openclaw-wechat](https://github.com/wutao667/openclaw-wechat).
+Full source code at [github.com/wutao667/openclaw-webchat](https://github.com/wutao667/openclaw-webchat).
