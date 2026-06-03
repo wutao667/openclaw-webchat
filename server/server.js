@@ -64,6 +64,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Redirect /install to /install/index.html
+  if (url.pathname === '/install' || url.pathname === '/install/') {
+    serveStatic('/install/index.html', res);
+    return;
+  }
+
   serveStatic(url.pathname, res);
 });
 

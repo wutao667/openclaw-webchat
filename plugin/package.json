@@ -1,6 +1,6 @@
 {
   "name": "openclaw-webchat-plugin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "WebChat channel plugin for OpenClaw \u2014 browser chat via WebSocket, no third-party IM needed",
   "type": "module",
   "main": "index.js",
