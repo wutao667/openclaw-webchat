@@ -22,7 +22,10 @@ The important architectural decision is that the plugin dials out to the Chat Se
 
 ```text
 webchat3.0/
-├── ARCHITECTURE.md
+├── README.md
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── IMPL-GUIDE.md
 ├── server/
 │   ├── package.json
 │   ├── server.js

@@ -2,3 +2,6 @@ node_modules/
 .git/
 *.swp
 *.swo
+
+# Local drafts (research notes, plan outputs, etc.)
+drafts/
