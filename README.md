@@ -26,7 +26,7 @@
 
 Admin 入口：`/admin/`，默认密码 `admin`（首次登录后请立即修改）。
 
-![Admin](docs/screenshots/04-admin.png)
+![Admin](docs/screenshots/04-admin.jpg)
 
 - **Chat Server**: 公网部署的 Node.js 服务，管理浏览器和 Plugin 的 WebSocket 连接
 - **Channel Plugin**: 安装在 OpenClaw Gateway 上的插件，主动出站 WS 连接 Chat Server
