@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, 'public');
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const APPS_FILE = path.join(__dirname, 'apps.json');
+const MESSAGES_LOG_FILE = path.join(__dirname, 'messages.ndjson');
 
 const browsers = new Map();
 const browserMeta = new WeakMap();
@@ -78,6 +79,7 @@ const pluginWss = new WebSocketServer({ noServer: true });
 
 initAppsFile();
 loadAppRegistry();
+loadMessageHistory();
 
 function initAppsFile() {
   if (!fs.existsSync(APPS_FILE)) {
@@ -101,6 +103,62 @@ function readAppsFile() {
 
 function writeAppsFile(data) {
   fs.writeFileSync(APPS_FILE, JSON.stringify(data, null, 2) + '\n');
+}
+
+function loadMessageHistory() {
+  let data;
+  try {
+    data = fs.readFileSync(MESSAGES_LOG_FILE, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    console.error('message history load error:', error);
+    return;
+  }
+
+  for (const line of data.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+
+    try {
+      const msg = JSON.parse(line);
+      if (!isValidHistoryMessage(msg)) continue;
+
+      const key = historyKey(msg.userId, msg.appId);
+      const messages = messageHistory.get(key) || [];
+      messages.push({
+        from: msg.from,
+        appId: msg.appId,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        messageId: msg.messageId,
+      });
+
+      if (messages.length > HISTORY_LIMIT) {
+        messages.splice(0, messages.length - HISTORY_LIMIT);
+      }
+
+      messageHistory.set(key, messages);
+    } catch {
+      // Skip damaged log lines and keep loading the rest.
+    }
+  }
+}
+
+function isValidHistoryMessage(msg) {
+  return msg
+    && typeof msg.userId === 'string'
+    && typeof msg.appId === 'string'
+    && (msg.from === 'user' || msg.from === 'agent')
+    && typeof msg.content === 'string'
+    && typeof msg.timestamp === 'number'
+    && typeof msg.messageId === 'string';
+}
+
+function persistMessage(msg) {
+  try {
+    fs.appendFileSync(MESSAGES_LOG_FILE, `${JSON.stringify(msg)}\n`);
+  } catch (error) {
+    console.error('message history persist error:', error);
+  }
 }
 
 server.on('upgrade', (req, socket, head) => {
@@ -471,12 +529,22 @@ function historyKey(userId, appId) {
 function appendHistory({ userId, appId, from, content, messageId }) {
   const key = historyKey(userId, appId);
   const messages = messageHistory.get(key) || [];
-  messages.push({
+  const timestamp = Date.now();
+  const newMsg = {
+    userId,
     from,
     appId,
     content,
-    timestamp: Date.now(),
+    timestamp,
     messageId,
+  };
+
+  messages.push({
+    from: newMsg.from,
+    appId: newMsg.appId,
+    content: newMsg.content,
+    timestamp: newMsg.timestamp,
+    messageId: newMsg.messageId,
   });
 
   if (messages.length > HISTORY_LIMIT) {
@@ -484,6 +552,7 @@ function appendHistory({ userId, appId, from, content, messageId }) {
   }
 
   messageHistory.set(key, messages);
+  persistMessage(newMsg);
 }
 
 function getHistoryForUser(userId) {
