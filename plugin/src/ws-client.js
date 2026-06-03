@@ -138,25 +138,30 @@ async function dispatchIncoming({ message, account, cfg, runtime }) {
     },
   });
 
-  // 绕开 SDK 的 internal_webchat 抑制策略：在本地直接发 typing_start。
-  // SDK 对 OriginatingChannel === "webchat" 强制 suppressTyping，导致
-  // dispatcherOptions.onReplyStart 永远不会被调用。
-  sendTypingEvent({ kind: "start", account, userId });
-  runtime?.log?.(`[webchat] reply started user=${userId} agent=${agentId}`);
+  let typingStarted = false;
+  const startTyping = () => {
+    if (typingStarted) return;
+    typingStarted = true;
+    sendTypingEvent({ kind: "start", account, userId });
+    runtime?.log?.(`[webchat] reply started user=${userId} agent=${agentId}`);
+  };
   let firstTextSent = false;
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg,
     dispatcherOptions: {
+      onReplyStart: async () => {
+        startTyping();
+      },
       deliver: async (payload) => {
         const text = payload.text || "";
         if (!text) return;
 
         if (!firstTextSent) {
           firstTextSent = true;
-          // fallback：万一前面的 start 失败，这里再补发一次
-          sendTypingEvent({ kind: "start", account, userId });
+          // fallback：万一 SDK onReplyStart 没触发，这里再补发一次
+          startTyping();
         }
 
         await sendOutgoingMessage({
