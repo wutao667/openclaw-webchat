@@ -15,11 +15,12 @@ export const webchatPlugin = {
     label: "WebChat",
     selectionLabel: "WebChat",
     blurb: "Browser chat channel for OpenClaw",
+    docsPath: "/channels",
   },
 
   capabilities: {
+    chatTypes: ["direct"],
     blockStreaming: true,
-    directChatOnly: true,
   },
 
   reload: {
