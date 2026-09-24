@@ -4,7 +4,7 @@ Browser WebChat channel for OpenClaw. Chat with your OpenClaw agents directly fr
 
 ## Prerequisites
 
-- OpenClaw Gateway >= 2026.3.28
+- OpenClaw Gateway >= 2026.9.0 (uses the new `plugin-sdk` subpath exports; the top-level `openclaw/plugin-sdk` entry point is deprecated)
 - A WebChat Chat Server running at a public (or reachable) address
 
 ## Install

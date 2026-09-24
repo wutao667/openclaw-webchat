@@ -1,4 +1,4 @@
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
+import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
 import { webchatPlugin } from "./src/channel.js";
 import { setWebChatRuntime } from "./src/runtime.js";
 
